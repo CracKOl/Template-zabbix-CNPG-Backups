@@ -47,7 +47,7 @@ Automatically extracted fields:
 - `{#NS}` → CNPG namespace
 - `{#CL}` → CNPG cluster name
 
-Optional filtering: namespaces starting with `cnpg-*`.
+Optional filtering with {$CNPG.NS.FILTER} → in example, to filter namespaces starting with `cnpg-*`.
 
 ## 📊 Automatically Created Items
 
