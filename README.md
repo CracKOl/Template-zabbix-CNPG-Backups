@@ -1,5 +1,12 @@
 # CNPG Backups Monitoring – Zabbix Template (API-based)
 
+> **Zabbix Template for CloudNativePG (CNPG) Backups Monitoring on Kubernetes**  
+> Automatic discovery of PostgreSQL CNPG clusters, backup monitoring, failure alerts, and backup age thresholds.
+
+![Zabbix](https://img.shields.io/badge/Zabbix-7.x-red)
+![Kubernetes](https://img.shields.io/badge/Kubernetes-1.34-blue)
+![CNPG](https://img.shields.io/badge/CloudNativePG-1.27-green)
+
 This Zabbix template provides full monitoring of **CloudNativePG (CNPG) backups** through the **Kubernetes API**, with no custom scripts required on cluster nodes.
 
 ## 🏗 Usage Context
@@ -10,6 +17,16 @@ This Zabbix template provides full monitoring of **CloudNativePG (CNPG) backups*
   - **Automatic discovery** of CNPG clusters and backups,
   - **Detailed backup checks** (status, failures, age),
   - Using **only the Kubernetes API** (HTTP Agent).
+
+## Why use this template?
+
+- Monitor CloudNativePG (CNPG) PostgreSQL backups on Kubernetes
+- Full Zabbix 7.x integration
+- Automatic discovery (LLD) of CNPG clusters
+- Backup status (completed / failed / running)
+- Backup age monitoring with configurable threshold
+- Zero agents or scripts on Kubernetes nodes
+- API-only monitoring for maximum reliability
 
 ## ✨ Features
 
