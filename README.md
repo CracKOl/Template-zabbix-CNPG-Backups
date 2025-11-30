@@ -75,6 +75,8 @@ For each cluster:
 
 ## ⚙️ Required Kubernetes Permissions (RBAC)
 
+- The default RBAC from [zabbix helm chart](https://www.zabbix.com/integrations/kubernetes#kubernetes_http) do allow zabbix to request postgresql.cnpg.io API.
+- We need to fix this :
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -99,13 +101,12 @@ subjects:
     namespace: monitoring
 ```
 
-Retrieve token:
-
+To retrieve your zabbix token, use this command:
 ```bash
 kubectl -n <NAMESPACE> create token zabbix-service-account
 ```
 
-Use in macro: `{$KUBE.API.TOKEN}`.
+Use it in macro: `{$KUBE.API.TOKEN}`.
 
 ## 📦 Installation
 
@@ -123,8 +124,9 @@ template_cnpg_backups_api.json
 
 ### 2. Assign to Kubernetes API host
 
-Choose your existing "Kube API hosts" and assign it the template or create a new host with the macros below.
-Macros to configure:
+- Choose your existing "Kube API hosts" and assign it the template.
+- If you d'ont already have a host to monitor your kubernetes cluster using the API, create a new one an set the macros below.
+- Macros to configure:
 
 | Macro | Description |
 |-------|-------------|
