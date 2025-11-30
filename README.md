@@ -119,6 +119,7 @@ template_cnpg_backups_api.json
 
 ### 2. Assign to Kubernetes API host
 
+Choose your existing "Kube API hosts" and assign it the template or create a new host with the macros below.
 Macros to configure:
 
 | Macro | Description |
