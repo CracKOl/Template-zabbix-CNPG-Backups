@@ -24,7 +24,7 @@ This Zabbix template provides full monitoring of **CloudNativePG (CNPG) backups*
 
 ## Why use this template?
 
-- Monitor CloudNativePG (CNPG) PostgreSQL backups on Kubernetes
+- Discover & Monitor CloudNativePG (CNPG) PostgreSQL scheduled backups on Kubernetes
 - Full Zabbix 7.x integration
 - Automatic discovery (LLD) of CNPG clusters
 - Backup status (completed / failed / running)
@@ -47,7 +47,7 @@ Automatically extracted fields:
 - `{#NS}` → CNPG namespace
 - `{#CL}` → CNPG cluster name
 
-Optional filtering: namespaces starting with `cnpg-*`.
+Optional filtering with {$CNPG.NS.FILTER} → in example, to filter namespaces starting with `cnpg-*`.
 
 ## 📊 Automatically Created Items
 
@@ -138,6 +138,7 @@ template_cnpg_backups_api.json
 | Macro | Description | Default |
 |--------|-------------|----------|
 | `{$CNPG.BACKUP.MAXAGE}` | Max age of last successful backup | `604800` |
+| `{$CNPG.NS.FILTER}` | Filter schedule discovery. Optional | `` |
 
 ## 📊 Expected Output
 

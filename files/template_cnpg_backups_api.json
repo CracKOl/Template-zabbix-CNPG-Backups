@@ -1,137 +1,304 @@
-{
-    "zabbix_export": {
-        "version": "7.0",
-        "template_groups": [
-            {
-                "uuid": "748ad4d098d447d492bb935c907f652f",
-                "name": "Templates/Databases"
-            }
-        ],
-        "templates": [
-            {
-                "uuid": "f7d68d278f5b462e874bb38fc119a299",
-                "template": "CNPG Backups",
-                "name": "CNPG Backups",
-                "groups": [
-                    {
-                        "name": "Templates/Databases"
-                    }
-                ],
-                "items": [
-                    {
-                        "uuid": "4576d97120934417b9473142db49d399",
-                        "name": "CNPG backups raw (API)",
-                        "type": "HTTP_AGENT",
-                        "key": "cnpg.backups.raw",
-                        "delay": "10m",
-                        "value_type": "TEXT",
-                        "trends": "0",
-                        "url": "{$KUBE.API.URL}/apis/postgresql.cnpg.io/v1/backups",
-                        "headers": [
-                            {
-                                "name": "Accept",
-                                "value": "application/json"
-                            },
-                            {
-                                "name": "Authorization",
-                                "value": "Bearer {$KUBE.API.TOKEN}"
-                            }
-                        ]
-                    }
-                ],
-                "discovery_rules": [
-                    {
-                        "uuid": "d6d5479931d640a695ac4835fea837bd",
-                        "name": "CNPG backups discovery (API)",
-                        "type": "DEPENDENT",
-                        "key": "cnpg.backup.discovery",
-                        "delay": "0",
-                        "item_prototypes": [
-                            {
-                                "uuid": "cb4245c8f592474dbcb08bf46b5ca2ce",
-                                "name": "CNPG backup age (sec) [{#NS}/{#CL}]",
-                                "type": "DEPENDENT",
-                                "key": "cnpg.backup.age[{#NS},{#CL}]",
-                                "delay": "0",
-                                "trends": "0",
-                                "units": "s",
-                                "preprocessing": [
-                                    {
-                                        "type": "JAVASCRIPT",
-                                        "parameters": [
-                                            "// Valeur non JSON -> 0 (aucun backup)\nif (value === null || value === undefined) {\n    return 0;\n}\nvar trimmed = value.toString().trim();\nif (trimmed.length === 0) {\n    return 0;\n}\nvar first = trimmed.charAt(0);\nif (first !== '{' && first !== '[') {\n    return 0;\n}\n\nvar obj;\ntry {\n    obj = JSON.parse(trimmed);\n} catch (e) {\n    return 0;\n}\n\nvar ns = '{#NS}';\nvar cl = '{#CL}';\n\nvar lastCompletedTs = null;\n\nif (!obj.items) {\n    return 0;\n}\n\nfor (var i = 0; i < obj.items.length; i++) {\n    var it = obj.items[i] || {};\n    var meta = it.metadata || {};\n    var spec = it.spec || {};\n    var status = it.status || {};\n\n    if (meta.namespace !== ns) continue;\n    var clusterName = spec.cluster && spec.cluster.name;\n    if (clusterName !== cl) continue;\n\n    var phase = (status.phase || \"\").toLowerCase();\n    if (phase !== \"completed\") continue;   // on ne garde que les backups OK\n\n    var t = status.stoppedAt || status.startedAt || meta.creationTimestamp;\n    if (!t) continue;\n    var ts = Date.parse(t);\n    if (isNaN(ts)) continue;\n\n    if (lastCompletedTs === null || ts > lastCompletedTs) {\n        lastCompletedTs = ts;\n    }\n}\n\n// Aucun backup r\u00e9ussi -> 0\nif (lastCompletedTs === null) {\n    return 0;\n}\n\nvar now = Date.now();\nvar ageSeconds = Math.floor((now - lastCompletedTs) / 1000);\n\n// S\u00e9curit\u00e9 : si c'\u00e9tait ultra r\u00e9cent, au pire 1s\nif (ageSeconds < 1) {\n    ageSeconds = 1;\n}\n\nreturn ageSeconds;\n"
-                                        ]
-                                    }
-                                ],
-                                "master_item": {
-                                    "key": "cnpg.backups.raw"
-                                },
-                                "trigger_prototypes": [
-                                    {
-                                        "uuid": "88612e9b22c64d0baee400bd2d53d136",
-                                        "expression": "last(/CNPG Backups/cnpg.backup.age[{#NS},{#CL}])>{$CNPG.BACKUP.MAXAGE}\nor\nlast(/CNPG Backups/cnpg.backup.age[{#NS},{#CL}])=0",
-                                        "name": "CNPG last successful backup >7d on {#NS}/{#CL}",
-                                        "priority": "AVERAGE"
-                                    }
-                                ]
-                            },
-                            {
-                                "uuid": "001275f22e344529b1b450b7b8bca99c",
-                                "name": "CNPG last successful backup on {#NS}/{#CL}",
-                                "type": "DEPENDENT",
-                                "key": "cnpg.backup.last_status[{#NS},{#CL}]",
-                                "delay": "0",
-                                "value_type": "TEXT",
-                                "trends": "0",
-                                "preprocessing": [
-                                    {
-                                        "type": "JAVASCRIPT",
-                                        "parameters": [
-                                            "// S\u00e9curise contre les valeurs non JSON\nif (value === null || value === undefined) {\n    return \"unknown\";\n}\nvar trimmed = value.toString().trim();\nif (trimmed.length === 0) {\n    return \"unknown\";\n}\nvar first = trimmed.charAt(0);\nif (first !== '{' && first !== '[') {\n    return \"unknown\";\n}\n\nvar obj;\ntry {\n    obj = JSON.parse(trimmed);\n} catch (e) {\n    return \"unknown\";\n}\n\nvar ns = '{#NS}';\nvar cl = '{#CL}';\n\nvar latestTs = null;\nvar latestPhase = \"unknown\";\n\nif (!obj.items) {\n    return latestPhase;\n}\n\nfor (var i = 0; i < obj.items.length; i++) {\n    var it = obj.items[i] || {};\n    var meta = it.metadata || {};\n    var spec = it.spec || {};\n    var status = it.status || {};\n\n    if (meta.namespace !== ns) continue;\n    var clusterName = spec.cluster && spec.cluster.name;\n    if (clusterName !== cl) continue;\n\n    var phase = (status.phase || \"unknown\").toLowerCase();\n    var t = status.stoppedAt || status.startedAt || meta.creationTimestamp;\n    if (!t) continue;\n    var ts = Date.parse(t);\n    if (isNaN(ts)) continue;\n\n    if (latestTs === null || ts > latestTs) {\n        latestTs = ts;\n        latestPhase = phase;\n    }\n}\n\nreturn latestPhase;\n"
-                                        ]
-                                    }
-                                ],
-                                "master_item": {
-                                    "key": "cnpg.backups.raw"
-                                },
-                                "trigger_prototypes": [
-                                    {
-                                        "uuid": "b2f03ecdb2ad453ab3fe5b9d37610022",
-                                        "expression": "find(/CNPG Backups/cnpg.backup.last_status[{#NS},{#CL}],#1,\"eq\",\"completed\")=0\nand\nfind(/CNPG Backups/cnpg.backup.last_status[{#NS},{#CL}],#1,\"eq\",\"started\")=0",
-                                        "name": "CNPG backup FAILED on {#NS}/{#CL}",
-                                        "priority": "AVERAGE"
-                                    }
-                                ]
-                            }
-                        ],
-                        "master_item": {
-                            "key": "cnpg.backups.raw"
-                        },
-                        "preprocessing": [
-                            {
-                                "type": "JAVASCRIPT",
-                                "parameters": [
-                                    "// Si la valeur est vide ou non JSON, on renvoie une discovery vide\nif (value === null || value === undefined) {\n    return JSON.stringify({data: []});\n}\n\nvar trimmed = value.toString().trim();\nif (trimmed.length === 0) {\n    return JSON.stringify({data: []});\n}\n\n// Si \u00e7a ne commence pas par { ou [, ce n'est pas du JSON \u2192 on ignore\nvar first = trimmed.charAt(0);\nif (first !== '{' && first !== '[') {\n    return JSON.stringify({data: []});\n}\n\nvar obj;\ntry {\n    obj = JSON.parse(trimmed);\n} catch (e) {\n    // En cas d'erreur de parse, on renvoie une discovery vide\n    return JSON.stringify({data: []});\n}\n\nvar data = [];\nvar seen = {};\n\nif (!obj.items) {\n    return JSON.stringify({data: data});\n}\n\nfor (var i = 0; i < obj.items.length; i++) {\n    var it = obj.items[i] || {};\n    var meta = it.metadata || {};\n    var spec = it.spec || {};\n\n    var ns = meta.namespace;\n    var cl = spec.cluster && spec.cluster.name;\n\n    if (!ns || !cl) {\n        continue;\n    }\n\n    if (!ns.startsWith(\"cnpg-\")) {\n        continue;\n    }\n\n    var key = ns + \"|\" + cl;\n    if (seen[key]) {\n        continue;\n    }\n    seen[key] = true;\n\n    data.push({\n        \"{#NS}\": ns,\n        \"{#CL}\": cl\n    });\n}\n\nreturn JSON.stringify({data: data});\n"
-                                ]
-                            }
-                        ]
-                    }
-                ],
-                "macros": [
-                    {
-                        "macro": "{$CNPG.BACKUP.MAXAGE}",
-                        "value": "604800",
-                        "description": "7j in seconds"
-                    },
-                    {
-                        "macro": "{$KUBE.API.TOKEN}",
-                        "type": "SECRET_TEXT"
-                    },
-                    {
-                        "macro": "{$KUBE.API.URL}"
-                    }
-                ]
-            }
-        ]
-    }
-}
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 748ad4d098d447d492bb935c907f652f
+      name: Templates/Databases
+  templates:
+    - uuid: f7d68d278f5b462e874bb38fc119a299
+      template: 'CNPG Backups'
+      name: 'CNPG Backups'
+      groups:
+        - name: Templates/Databases
+      items:
+        - uuid: 4576d97120934417b9473142db49d399
+          name: 'CNPG backups raw (API)'
+          type: HTTP_AGENT
+          key: cnpg.backups.raw
+          delay: 10m
+          value_type: TEXT
+          trends: '0'
+          url: '{$KUBE.API.URL}/apis/postgresql.cnpg.io/v1/backups'
+          headers:
+            - name: Accept
+              value: application/json
+            - name: Authorization
+              value: 'Bearer {$KUBE.API.TOKEN}'
+      discovery_rules:
+        - uuid: d6d5479931d640a695ac4835fea837bd
+          name: 'CNPG backups discovery (API)'
+          type: DEPENDENT
+          key: cnpg.backup.discovery
+          delay: '0'
+          item_prototypes:
+            - uuid: cb4245c8f592474dbcb08bf46b5ca2ce
+              name: 'CNPG backup age (sec) [{#NS}/{#CL}]'
+              type: DEPENDENT
+              key: 'cnpg.backup.age[{#NS},{#CL}]'
+              delay: '0'
+              trends: '0'
+              units: s
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      // Valeur non JSON -> 0 (aucun backup)
+                      if (value === null || value === undefined) {
+                          return 0;
+                      }
+                      var trimmed = value.toString().trim();
+                      if (trimmed.length === 0) {
+                          return 0;
+                      }
+                      var first = trimmed.charAt(0);
+                      if (first !== '{' && first !== '[') {
+                          return 0;
+                      }
+                      
+                      var obj;
+                      try {
+                          obj = JSON.parse(trimmed);
+                      } catch (e) {
+                          return 0;
+                      }
+                      
+                      var ns = '{#NS}';
+                      var cl = '{#CL}';
+                      
+                      var lastCompletedTs = null;
+                      
+                      if (!obj.items) {
+                          return 0;
+                      }
+                      
+                      for (var i = 0; i < obj.items.length; i++) {
+                          var it = obj.items[i] || {};
+                          var meta = it.metadata || {};
+                          var spec = it.spec || {};
+                          var status = it.status || {};
+                      
+                          if (meta.namespace !== ns) continue;
+                          var clusterName = spec.cluster && spec.cluster.name;
+                          if (clusterName !== cl) continue;
+                      
+                          var phase = (status.phase || "").toLowerCase();
+                          if (phase !== "completed") continue;   // on ne garde que les backups OK
+                      
+                          var t = status.stoppedAt || status.startedAt || meta.creationTimestamp;
+                          if (!t) continue;
+                          var ts = Date.parse(t);
+                          if (isNaN(ts)) continue;
+                      
+                          if (lastCompletedTs === null || ts > lastCompletedTs) {
+                              lastCompletedTs = ts;
+                          }
+                      }
+                      
+                      // Aucun backup réussi -> 0
+                      if (lastCompletedTs === null) {
+                          return 0;
+                      }
+                      
+                      var now = Date.now();
+                      var ageSeconds = Math.floor((now - lastCompletedTs) / 1000);
+                      
+                      // Sécurité : si c'était ultra récent, au pire 1s
+                      if (ageSeconds < 1) {
+                          ageSeconds = 1;
+                      }
+                      
+                      return ageSeconds;
+                      
+              master_item:
+                key: cnpg.backups.raw
+              trigger_prototypes:
+                - uuid: 88612e9b22c64d0baee400bd2d53d136
+                  expression: |
+                    last(/CNPG Backups/cnpg.backup.age[{#NS},{#CL}])>{$CNPG.BACKUP.MAXAGE}
+                    or
+                    last(/CNPG Backups/cnpg.backup.age[{#NS},{#CL}])=0
+                  name: 'CNPG last successful backup >7d on {#NS}/{#CL}'
+                  priority: AVERAGE
+            - uuid: 001275f22e344529b1b450b7b8bca99c
+              name: 'CNPG last successful backup on {#NS}/{#CL}'
+              type: DEPENDENT
+              key: 'cnpg.backup.last_status[{#NS},{#CL}]'
+              delay: '0'
+              value_type: TEXT
+              trends: '0'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      // Sécurise contre les valeurs non JSON
+                      if (value === null || value === undefined) {
+                          return "unknown";
+                      }
+                      var trimmed = value.toString().trim();
+                      if (trimmed.length === 0) {
+                          return "unknown";
+                      }
+                      var first = trimmed.charAt(0);
+                      if (first !== '{' && first !== '[') {
+                          return "unknown";
+                      }
+                      
+                      var obj;
+                      try {
+                          obj = JSON.parse(trimmed);
+                      } catch (e) {
+                          return "unknown";
+                      }
+                      
+                      var ns = '{#NS}';
+                      var cl = '{#CL}';
+                      
+                      var latestTs = null;
+                      var latestPhase = "unknown";
+                      
+                      if (!obj.items) {
+                          return latestPhase;
+                      }
+                      
+                      for (var i = 0; i < obj.items.length; i++) {
+                          var it = obj.items[i] || {};
+                          var meta = it.metadata || {};
+                          var spec = it.spec || {};
+                          var status = it.status || {};
+                      
+                          if (meta.namespace !== ns) continue;
+                          var clusterName = spec.cluster && spec.cluster.name;
+                          if (clusterName !== cl) continue;
+                      
+                          var phase = (status.phase || "unknown").toLowerCase();
+                          var t = status.stoppedAt || status.startedAt || meta.creationTimestamp;
+                          if (!t) continue;
+                          var ts = Date.parse(t);
+                          if (isNaN(ts)) continue;
+                      
+                          if (latestTs === null || ts > latestTs) {
+                              latestTs = ts;
+                              latestPhase = phase;
+                          }
+                      }
+                      
+                      return latestPhase;
+                      
+              master_item:
+                key: cnpg.backups.raw
+              trigger_prototypes:
+                - uuid: b2f03ecdb2ad453ab3fe5b9d37610022
+                  expression: |
+                    find(/CNPG Backups/cnpg.backup.last_status[{#NS},{#CL}],#1,"eq","completed")=0
+                    and
+                    find(/CNPG Backups/cnpg.backup.last_status[{#NS},{#CL}],#1,"eq","started")=0
+                  name: 'CNPG backup FAILED on {#NS}/{#CL}'
+                  priority: AVERAGE
+          master_item:
+            key: cnpg.backups.raw
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  // value = réponse JSON de l'API Kubernetes
+                  
+                  // Si la valeur est vide ou non JSON, on renvoie une discovery vide
+                  if (value === null || value === undefined) {
+                      return JSON.stringify({data: []});
+                  }
+                  
+                  var trimmed = value.toString().trim();
+                  if (trimmed.length === 0) {
+                      return JSON.stringify({data: []});
+                  }
+                  
+                  // Si ça ne commence pas par { ou [, ce n'est pas du JSON → on ignore
+                  var first = trimmed.charAt(0);
+                  if (first !== '{' && first !== '[') {
+                      return JSON.stringify({data: []});
+                  }
+                  
+                  var obj;
+                  try {
+                      obj = JSON.parse(trimmed);
+                  } catch (e) {
+                      // En cas d'erreur de parse, on renvoie une discovery vide
+                      return JSON.stringify({data: []});
+                  }
+                  
+                  var data = [];
+                  var seen = {};
+                  
+                  // ---------------------------------------------------------------------
+                  // Macro de filtre sur le namespace (ex: cnpg-*)
+                  // - Si vide → pas de filtre (tous les NS)
+                  // - Si non vide → on applique un filtre de type "glob" (*, ?)
+                  // ---------------------------------------------------------------------
+                  var nsFilterRaw = '{$CNPG.NS.FILTER}';  // ⚠️ adapte le nom de macro si besoin
+                  nsFilterRaw = (nsFilterRaw || '').trim();
+                  
+                  var nsFilterRegex = null;
+                  
+                  // Si la macro est définie ET que ce n'est pas le placeholder non résolu "{$...}"
+                  if (
+                      nsFilterRaw.length > 0 &&
+                      !(nsFilterRaw.startsWith('{$') && nsFilterRaw.endsWith('}'))
+                  ) {
+                      // Conversion d'un pattern "glob" en RegExp
+                      // - On échappe les caractères spéciaux regex
+                      // - On remplace '*' par '.*' et '?' par '.'
+                      var escaped = nsFilterRaw.replace(/[-\/\\^$+?.()|[\]{}]/g, '\\$&');
+                      var regexStr = '^' +
+                          escaped
+                              .replace(/\*/g, '.*')
+                              .replace(/\?/g, '.') +
+                          '$';
+                  
+                      nsFilterRegex = new RegExp(regexStr);
+                  }
+                  
+                  if (!obj.items) {
+                      return JSON.stringify({data: data});
+                  }
+                  
+                  for (var i = 0; i < obj.items.length; i++) {
+                      var it = obj.items[i] || {};
+                      var meta = it.metadata || {};
+                      var spec = it.spec || {};
+                  
+                      var ns = meta.namespace;
+                      var cl = spec.cluster && spec.cluster.name;
+                  
+                      if (!ns || !cl) {
+                          continue;
+                      }
+                  
+                      // Si un filtre de namespace est défini, on l'applique
+                      if (nsFilterRegex && !nsFilterRegex.test(ns)) {
+                          continue;
+                      }
+                  
+                      var key = ns + "|" + cl;
+                      if (seen[key]) {
+                          continue;
+                      }
+                      seen[key] = true;
+                  
+                      data.push({
+                          "{#NS}": ns,
+                          "{#CL}": cl
+                      });
+                  }
+                  
+                  return JSON.stringify({data: data});
+                  
+      macros:
+        - macro: '{$CNPG.BACKUP.MAXAGE}'
+          value: '604800'
+          description: '7j in seconds'
+        - macro: '{$CNPG.NS.FILTER}'
+          description: Optional
+        - macro: '{$KUBE.API.TOKEN}'
+          type: SECRET_TEXT
+          description: 'Zabbix ServiceAccount token'
+        - macro: '{$KUBE.API.URL}'
+          description: 'https://your-ip:6443'
